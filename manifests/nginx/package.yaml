@@ -1,0 +1,5 @@
+packageName: nginx
+channels:
+- name: alpha
+  currentCSV: nginx.v2.0.0
+defaultChannel: alpha
