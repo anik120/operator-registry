@@ -8,14 +8,16 @@ import (
 )
 
 const (
-	defaultBinarySourceImage = "quay.io/operator-framework/upstream-opm-builder"
-	DefaultDbLocation        = "/database/index.db"
-	DbLocationLabel          = "operators.operatorframework.io.index.database.v1"
+	defaultBinarySourceImage    = "quay.io/operator-framework/upstream-opm-builder"
+	DefaultDbLocation           = "/database/index.db"
+	DefaultConfigFolderLocation = "/configs/"
+	DbLocationLabel             = "operators.operatorframework.io.index.database.v1"
+	ConfigsLocationLabel        = "operators.operatorframework.io.configs.v1"
 )
 
 // DockerfileGenerator defines functions to generate index dockerfiles
 type DockerfileGenerator interface {
-	GenerateIndexDockerfile(string, string) string
+	GenerateIndexDockerfile(string, string, string) string
 }
 
 // IndexDockerfileGenerator struct implementation of DockerfileGenerator interface
@@ -32,7 +34,7 @@ func NewDockerfileGenerator(logger *logrus.Entry) DockerfileGenerator {
 
 // GenerateIndexDockerfile builds a string representation of a dockerfile to use when building
 // an operator-registry index image
-func (g *IndexDockerfileGenerator) GenerateIndexDockerfile(binarySourceImage, databasePath string) string {
+func (g *IndexDockerfileGenerator) GenerateIndexDockerfile(binarySourceImage, databasePath, configFolderPath string) string {
 	var dockerfile string
 
 	if binarySourceImage == "" {
@@ -46,9 +48,13 @@ func (g *IndexDockerfileGenerator) GenerateIndexDockerfile(binarySourceImage, da
 
 	// Labels
 	dockerfile += fmt.Sprintf("LABEL %s=%s\n", DbLocationLabel, DefaultDbLocation)
+	dockerfile += fmt.Sprintf("LABEL %s=%s\n", ConfigsLocationLabel, DefaultConfigFolderLocation)
 
 	// Content
 	dockerfile += fmt.Sprintf("ADD %s %s\n", databasePath, DefaultDbLocation)
+	if configFolderPath != "" {
+		dockerfile += fmt.Sprintf("ADD %s %s\n", configFolderPath, DefaultConfigFolderLocation)
+	}
 	dockerfile += fmt.Sprintf("EXPOSE 50051\n")
 	dockerfile += fmt.Sprintf("ENTRYPOINT [\"/bin/opm\"]\n")
 	dockerfile += fmt.Sprintf("CMD [\"registry\", \"serve\", \"--database\", \"%s\"]\n", DefaultDbLocation)

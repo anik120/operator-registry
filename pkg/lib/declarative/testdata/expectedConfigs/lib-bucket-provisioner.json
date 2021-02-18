@@ -1,0 +1,46 @@
+{
+    "schema": "olm.package",
+    "name": "lib-bucket-provisioner",
+    "defaultChannel": "alpha",
+    "icon": {
+       "base64data": "",
+       "mediatype": ""
+    },
+    "channels": [
+       "alpha",
+       "beta"
+    ],
+    "description": ""
+ }
+{
+    "schema": "olm.bundle",
+    "name": "lib-bucket-provisioner.v1.0.0",
+    "package": "lib-bucket-provisioner",
+    "image": "",
+    "version": "1.0.0",
+    "properties": [
+       {
+          "type": "olm.channel",
+          "value": {
+             "name": "alpha",
+             "replaces": ""
+          }
+       },
+       {
+          "type": "olm.channel",
+          "value": {
+             "name": "beta",
+             "replaces": ""
+          }
+       },
+       {
+          "type": "skips",
+          "value": ""
+       },
+       {
+          "type": "skipsRange",
+          "value": ""
+       }
+    ],
+    "relatedImages": []
+ }

@@ -3,6 +3,7 @@ package indexer
 
 import (
 	"github.com/operator-framework/operator-registry/pkg/containertools"
+	"github.com/operator-framework/operator-registry/pkg/lib/declarative"
 	"github.com/operator-framework/operator-registry/pkg/lib/registry"
 	"github.com/sirupsen/logrus"
 )
@@ -20,6 +21,7 @@ func NewIndexAdder(buildTool, pullTool containertools.ContainerTool, logger *log
 		DockerfileGenerator: containertools.NewDockerfileGenerator(logger),
 		CommandRunner:       containertools.NewCommandRunner(buildTool, logger),
 		LabelReader:         containertools.NewLabelReader(pullTool, logger),
+		IndexConfig:         declarative.NewIndexConfig(logger),
 		RegistryAdder:       registry.NewRegistryAdder(logger),
 		BuildTool:           buildTool,
 		PullTool:            pullTool,
