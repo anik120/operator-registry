@@ -12,11 +12,13 @@ import (
 	"strconv"
 	"sync"
 
+	dircopy "github.com/otiai10/copy"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"github.com/operator-framework/operator-registry/pkg/containertools"
+	"github.com/operator-framework/operator-registry/pkg/declarative"
 	"github.com/operator-framework/operator-registry/pkg/image"
 	"github.com/operator-framework/operator-registry/pkg/image/containerdregistry"
 	"github.com/operator-framework/operator-registry/pkg/image/execregistry"
@@ -32,6 +34,7 @@ const (
 	defaultImageTag           = "operator-registry-index:latest"
 	defaultDatabaseFolder     = "database"
 	defaultDatabaseFile       = "index.db"
+	defaultConfigFolder       = "configs"
 	tmpDirPrefix              = "index_tmp_"
 	tmpBuildDirPrefix         = "index_build_tmp"
 	concurrencyLimitForExport = 10
@@ -42,6 +45,7 @@ type ImageIndexer struct {
 	DockerfileGenerator    containertools.DockerfileGenerator
 	CommandRunner          containertools.CommandRunner
 	LabelReader            containertools.LabelReader
+	IndexConfig            declarative.IndexConfig
 	RegistryAdder          registry.RegistryAdder
 	RegistryDeleter        registry.RegistryDeleter
 	RegistryPruner         registry.RegistryPruner
@@ -75,7 +79,7 @@ func (i ImageIndexer) AddToIndex(request AddToIndexRequest) error {
 		return err
 	}
 
-	databasePath, err := i.ExtractDatabase(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
+	databasePath, configFolderPath, err := i.ExtractDatabases(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
 	if err != nil {
 		return err
 	}
@@ -98,8 +102,17 @@ func (i ImageIndexer) AddToIndex(request AddToIndexRequest) error {
 		return err
 	}
 
+	// Add the bundles declarative config
+	addToConfigReq := declarative.AddConfigRequest{
+		Bundles:      request.Bundles,
+		ConfigFolder: configFolderPath,
+	}
+	if err := i.IndexConfig.AddToConfig(addToConfigReq); err != nil {
+		i.Logger.WithError(err).Debugf("unable to add bundle to config")
+		return err
+	}
 	// generate the dockerfile
-	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath)
+	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath, configFolderPath)
 	err = write(dockerfile, outDockerfile, i.Logger)
 	if err != nil {
 		return err
@@ -140,7 +153,7 @@ func (i ImageIndexer) DeleteFromIndex(request DeleteFromIndexRequest) error {
 		return err
 	}
 
-	databasePath, err := i.ExtractDatabase(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
+	databasePath, _, err := i.ExtractDatabases(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
 	if err != nil {
 		return err
 	}
@@ -159,7 +172,7 @@ func (i ImageIndexer) DeleteFromIndex(request DeleteFromIndexRequest) error {
 	}
 
 	// generate the dockerfile
-	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath)
+	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath, "")
 	err = write(dockerfile, outDockerfile, i.Logger)
 	if err != nil {
 		return err
@@ -198,7 +211,7 @@ func (i ImageIndexer) PruneStrandedFromIndex(request PruneStrandedFromIndexReque
 		return err
 	}
 
-	databasePath, err := i.ExtractDatabase(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
+	databasePath, _, err := i.ExtractDatabases(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
 	if err != nil {
 		return err
 	}
@@ -215,7 +228,7 @@ func (i ImageIndexer) PruneStrandedFromIndex(request PruneStrandedFromIndexReque
 	}
 
 	// generate the dockerfile
-	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath)
+	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath, "")
 	err = write(dockerfile, outDockerfile, i.Logger)
 	if err != nil {
 		return err
@@ -253,7 +266,7 @@ func (i ImageIndexer) PruneFromIndex(request PruneFromIndexRequest) error {
 		return err
 	}
 
-	databasePath, err := i.ExtractDatabase(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
+	databasePath, _, err := i.ExtractDatabases(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
 	if err != nil {
 		return err
 	}
@@ -272,7 +285,7 @@ func (i ImageIndexer) PruneFromIndex(request PruneFromIndexRequest) error {
 	}
 
 	// generate the dockerfile
-	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath)
+	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath, "")
 	err = write(dockerfile, outDockerfile, i.Logger)
 	if err != nil {
 		return err
@@ -291,25 +304,27 @@ func (i ImageIndexer) PruneFromIndex(request PruneFromIndexRequest) error {
 	return nil
 }
 
-// ExtractDatabase sets a temp directory for unpacking an image
-func (i ImageIndexer) ExtractDatabase(buildDir, fromIndex, caFile string, skipTLS bool) (string, error) {
+// ExtractDatabases extracts the sqlite database and configs directory from an index image.
+func (i ImageIndexer) ExtractDatabases(buildDir, fromIndex, caFile string, skipTLS bool) (string, string, error) {
 	tmpDir, err := ioutil.TempDir("./", tmpDirPrefix)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer os.RemoveAll(tmpDir)
 
-	databaseFile, err := i.getDatabaseFile(tmpDir, fromIndex, caFile, skipTLS)
+	databaseFile, configFolder, err := i.getDatabases(tmpDir, fromIndex, caFile, skipTLS)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	// copy the index to the database folder in the build directory
-	return copyDatabaseTo(databaseFile, filepath.Join(buildDir, defaultDatabaseFolder))
+	// copy the index content to the build directory
+	databaseFile, configFolder, err = copyDatabasesTo(databaseFile, configFolder, filepath.Join(buildDir, defaultDatabaseFolder), filepath.Join(buildDir, defaultConfigFolder))
+	return databaseFile, configFolder, err
 }
 
-func (i ImageIndexer) getDatabaseFile(workingDir, fromIndex, caFile string, skipTLS bool) (string, error) {
+func (i ImageIndexer) getDatabases(workingDir, fromIndex, caFile string, skipTLS bool) (string, string, error) {
 	if fromIndex == "" {
-		return path.Join(workingDir, defaultDatabaseFile), nil
+		_ = os.Mkdir(path.Join(workingDir, defaultConfigFolder), 0700)
+		return path.Join(workingDir, defaultDatabaseFile), path.Join(workingDir, defaultConfigFolder), nil
 	}
 
 	// Pull the fromIndex
@@ -321,7 +336,7 @@ func (i ImageIndexer) getDatabaseFile(workingDir, fromIndex, caFile string, skip
 	case containertools.NoneTool:
 		rootCAs, err := certs.RootCAs(caFile)
 		if err != nil {
-			return "", fmt.Errorf("failed to get RootCAs: %v", err)
+			return "", "", fmt.Errorf("failed to get RootCAs: %v", err)
 		}
 		reg, rerr = containerdregistry.NewRegistry(containerdregistry.SkipTLS(skipTLS), containerdregistry.WithLog(i.Logger), containerdregistry.WithRootCAs(rootCAs))
 	case containertools.PodmanTool:
@@ -330,7 +345,7 @@ func (i ImageIndexer) getDatabaseFile(workingDir, fromIndex, caFile string, skip
 		reg, rerr = execregistry.NewRegistry(i.PullTool, i.Logger, containertools.SkipTLS(skipTLS))
 	}
 	if rerr != nil {
-		return "", rerr
+		return "", "", rerr
 	}
 	defer func() {
 		if err := reg.Destroy(); err != nil {
@@ -341,56 +356,73 @@ func (i ImageIndexer) getDatabaseFile(workingDir, fromIndex, caFile string, skip
 	imageRef := image.SimpleReference(fromIndex)
 
 	if err := reg.Pull(context.TODO(), imageRef); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// Get the old index image's dbLocationLabel to find this path
 	labels, err := reg.Labels(context.TODO(), imageRef)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	dbLocation, ok := labels[containertools.DbLocationLabel]
 	if !ok {
-		return "", fmt.Errorf("index image %s missing label %s", fromIndex, containertools.DbLocationLabel)
+		return "", "", fmt.Errorf("index image %s missing label %s", fromIndex, containertools.DbLocationLabel)
+	}
+
+	configsLocation, ok := labels[containertools.ConfigsLocationLabel]
+	if !ok {
+		return "", "", fmt.Errorf("index image %s missing label %s", fromIndex, containertools.DbLocationLabel)
 	}
 
 	if err := reg.Unpack(context.TODO(), imageRef, workingDir); err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return path.Join(workingDir, dbLocation), nil
+	return path.Join(workingDir, dbLocation), path.Join(workingDir, configsLocation), nil
 }
 
-func copyDatabaseTo(databaseFile, targetDir string) (string, error) {
-	// create the containing folder if it doesn't exist
-	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(targetDir, 0777); err != nil {
-			return "", err
+func copyDatabasesTo(databaseFile, configFolder, targetDbDir, targetConfigDir string) (string, string, error) {
+	// create the target folders if they don't exist
+	if _, err := os.Stat(targetDbDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(targetDbDir, 0777); err != nil {
+			return "", "", err
 		}
 	} else if err != nil {
-		return "", err
+		return "", "", err
+	}
+
+	if _, err := os.Stat(targetConfigDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(targetConfigDir, 0777); err != nil {
+			return "", "", err
+		}
+	} else if err != nil {
+		return "", "", err
 	}
 
 	// Open the database file in the working dir
-	from, err := os.OpenFile(databaseFile, os.O_RDWR|os.O_CREATE, 0666)
+	dbFrom, err := os.OpenFile(databaseFile, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	defer from.Close()
+	defer dbFrom.Close()
 
-	dbFile := path.Join(targetDir, defaultDatabaseFile)
+	dbFile := path.Join(targetDbDir, defaultDatabaseFile)
 
 	// define the path to copy to the database/index.db file
-	to, err := os.OpenFile(dbFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	dbTo, err := os.OpenFile(dbFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	defer to.Close()
+	defer dbTo.Close()
 
 	// copy to the destination directory
-	_, err = io.Copy(to, from)
-	return to.Name(), err
+	_, err = io.Copy(dbTo, dbFrom)
+	if err != nil {
+		return "", "", err
+	}
+	err = dircopy.Copy(configFolder, targetConfigDir, dircopy.Options{})
+	return dbTo.Name(), targetConfigDir, err
 }
 
 func buildContext(generate bool, requestedDockerfile string) (buildDir, outDockerfile string, cleanup func(), err error) {
@@ -490,7 +522,7 @@ func (i ImageIndexer) ExportFromIndex(request ExportFromIndexRequest) error {
 	defer os.RemoveAll(workingDir)
 
 	// extract the index database to the file
-	databaseFile, err := i.getDatabaseFile(workingDir, request.Index, request.CaFile, request.SkipTLS)
+	databaseFile, _, err := i.getDatabases(workingDir, request.Index, request.CaFile, request.SkipTLS)
 	if err != nil {
 		return err
 	}
@@ -658,7 +690,7 @@ func (i ImageIndexer) DeprecateFromIndex(request DeprecateFromIndexRequest) erro
 		return err
 	}
 
-	databasePath, err := i.ExtractDatabase(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
+	databasePath, _, err := i.ExtractDatabases(buildDir, request.FromIndex, request.CaFile, request.SkipTLS)
 	if err != nil {
 		return err
 	}
@@ -677,7 +709,7 @@ func (i ImageIndexer) DeprecateFromIndex(request DeprecateFromIndexRequest) erro
 	}
 
 	// generate the dockerfile
-	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath)
+	dockerfile := i.DockerfileGenerator.GenerateIndexDockerfile(request.BinarySourceImage, databasePath, "")
 	err = write(dockerfile, outDockerfile, i.Logger)
 	if err != nil {
 		return err

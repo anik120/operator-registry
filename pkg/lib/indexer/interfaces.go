@@ -3,7 +3,10 @@ package indexer
 
 import (
 	"github.com/operator-framework/operator-registry/pkg/containertools"
+	"github.com/operator-framework/operator-registry/pkg/declarative"
+	"github.com/operator-framework/operator-registry/pkg/image"
 	"github.com/operator-framework/operator-registry/pkg/lib/registry"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,11 +18,12 @@ type IndexAdder interface {
 }
 
 // NewIndexAdder is a constructor that returns an IndexAdder
-func NewIndexAdder(buildTool, pullTool containertools.ContainerTool, logger *logrus.Entry) IndexAdder {
+func NewIndexAdder(buildTool, pullTool containertools.ContainerTool, logger *logrus.Entry, imgRegistry image.Registry) IndexAdder {
 	return ImageIndexer{
 		DockerfileGenerator: containertools.NewDockerfileGenerator(logger),
 		CommandRunner:       containertools.NewCommandRunner(buildTool, logger),
 		LabelReader:         containertools.NewLabelReader(pullTool, logger),
+		IndexConfig:         declarative.NewIndexConfig(logger, imgRegistry),
 		RegistryAdder:       registry.NewRegistryAdder(logger),
 		BuildTool:           buildTool,
 		PullTool:            pullTool,

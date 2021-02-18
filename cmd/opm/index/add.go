@@ -8,6 +8,10 @@ import (
 	"k8s.io/kubectl/pkg/util/templates"
 
 	"github.com/operator-framework/operator-registry/pkg/containertools"
+	"github.com/operator-framework/operator-registry/pkg/image"
+	"github.com/operator-framework/operator-registry/pkg/image/containerdregistry"
+	"github.com/operator-framework/operator-registry/pkg/image/execregistry"
+	"github.com/operator-framework/operator-registry/pkg/lib/certs"
 	"github.com/operator-framework/operator-registry/pkg/lib/indexer"
 	"github.com/operator-framework/operator-registry/pkg/registry"
 )
@@ -63,6 +67,7 @@ func addIndexAddCmd(parent *cobra.Command) {
 	indexCmd.Flags().StringP("tag", "t", "", "custom tag for container image being built")
 	indexCmd.Flags().Bool("permissive", false, "allow registry load errors")
 	indexCmd.Flags().StringP("mode", "", "replaces", "graph update mode that defines how channel graphs are updated. One of: [replaces, semver, semver-skippatch]")
+	indexCmd.Flags().StringP("ca-file", "", "", "the root Certificates to use with this command")
 
 	indexCmd.Flags().Bool("overwrite-latest", false, "overwrite the latest bundles (channel heads) with those of the same csv name given by --bundles")
 	if err := indexCmd.Flags().MarkHidden("overwrite-latest"); err != nil {
@@ -139,14 +144,37 @@ func runIndexAddCmdFunc(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	caFile, err := cmd.Flags().GetString("ca-file")
+	if err != nil {
+		return err
+	}
+
 	logger := logrus.WithFields(logrus.Fields{"bundles": bundles})
 
 	logger.Info("building the index")
+	var reg image.Registry
+	var rerr error
+	tool := containertools.NewContainerTool(pullTool, containertools.NoneTool)
+	switch tool {
+	case containertools.NoneTool:
+		rootCAs, err := certs.RootCAs(caFile)
+		if err != nil {
+			return fmt.Errorf("failed to get RootCAs: %v", err)
+		}
+		reg, rerr = containerdregistry.NewRegistry(containerdregistry.SkipTLS(skipTLS), containerdregistry.WithLog(logger), containerdregistry.WithRootCAs(rootCAs))
+	case containertools.PodmanTool:
+		fallthrough
+	case containertools.DockerTool:
+		reg, rerr = execregistry.NewRegistry(tool, logger, containertools.SkipTLS(skipTLS))
+	}
+	if rerr != nil {
+		return rerr
+	}
 
 	indexAdder := indexer.NewIndexAdder(
 		containertools.NewContainerTool(buildTool, containertools.PodmanTool),
 		containertools.NewContainerTool(pullTool, containertools.NoneTool),
-		logger)
+		logger, reg)
 
 	request := indexer.AddToIndexRequest{
 		Generate:          generate,

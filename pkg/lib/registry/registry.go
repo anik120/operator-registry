@@ -97,7 +97,7 @@ func (r RegistryUpdater) AddToRegistry(request AddToRegistryRequest) error {
 	return nil
 }
 
-func unpackImage(ctx context.Context, reg image.Registry, ref image.Reference) (image.Reference, string, func(), error) {
+func UnpackImage(ctx context.Context, reg image.Registry, ref image.Reference) (image.Reference, string, func(), error) {
 	var errs []error
 	workingDir, err := ioutil.TempDir("./", "bundle_tmp")
 	if err != nil {
@@ -127,7 +127,7 @@ func unpackImage(ctx context.Context, reg image.Registry, ref image.Reference) (
 func populate(ctx context.Context, loader registry.Load, graphLoader registry.GraphLoader, querier registry.Query, reg image.Registry, refs []image.Reference, mode registry.Mode, overwrite bool) error {
 	unpackedImageMap := make(map[image.Reference]string, 0)
 	for _, ref := range refs {
-		to, from, cleanup, err := unpackImage(ctx, reg, ref)
+		to, from, cleanup, err := UnpackImage(ctx, reg, ref)
 		if err != nil {
 			return err
 		}
@@ -169,7 +169,7 @@ func populate(ctx context.Context, loader registry.Load, graphLoader registry.Gr
 				// parallelize image pulls
 				go func(bundle registry.BundleKey, img *registry.ImageInput) {
 					if bundle.CsvName != img.Bundle.Name {
-						to, from, cleanup, err := unpackImage(ctx, reg, image.SimpleReference(bundle.BundlePath))
+						to, from, cleanup, err := UnpackImage(ctx, reg, image.SimpleReference(bundle.BundlePath))
 						unpacked <- unpackedImage{to: to, from: from, cleanup: cleanup, err: err}
 					} else {
 						unpacked <- unpackedImage{to: to, from: from, cleanup: func() { return }, err: nil}

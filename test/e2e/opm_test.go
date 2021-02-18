@@ -70,6 +70,7 @@ func (bl bundleLocations) images() []string {
 
 func inTemporaryBuildContext(f func() error) (rerr error) {
 	td, err := ioutil.TempDir(".", "opm-")
+	defer os.RemoveAll(td)
 	if err != nil {
 		return err
 	}
@@ -424,7 +425,7 @@ var _ = Describe("opm", func() {
 				PullTool: tool,
 				Logger:   logger,
 			}
-			dbFile, err := imageIndexer.ExtractDatabase(".", publishedIndex, "", true)
+			dbFile, _, err := imageIndexer.ExtractDatabases(".", publishedIndex, "", true)
 			Expect(err).NotTo(HaveOccurred(), "error extracting registry db")
 
 			db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s", dbFile))
