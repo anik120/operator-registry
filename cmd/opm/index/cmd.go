@@ -9,8 +9,8 @@ import (
 func AddCommand(parent *cobra.Command) {
 	cmd := &cobra.Command{
 		Use:   "index",
-		Short: "generate operator index container images",
-		Long:  `generate operator index container images from preexisting operator bundles`,
+		Short: "build/edit operator index container images",
+		Long:  `build/edit operator index container images from preexisting operator bundles`,
 
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if debug, _ := cmd.Flags().GetBool("debug"); debug {
@@ -29,6 +29,7 @@ func AddCommand(parent *cobra.Command) {
 	parent.PersistentFlags().Bool("skip-tls", false, "skip TLS certificate verification for container image registries while pulling bundles or index")
 	cmd.AddCommand(newIndexDeleteCmd())
 	addIndexAddCmd(cmd)
+	cmd.AddCommand(newIndexInspectCmd())
 	cmd.AddCommand(newIndexExportCmd())
 	cmd.AddCommand(newIndexPruneCmd())
 	cmd.AddCommand(newIndexDeprecateTruncateCmd())

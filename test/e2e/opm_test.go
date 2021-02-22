@@ -21,6 +21,7 @@ import (
 	"github.com/operator-framework/operator-registry/pkg/image/containerdregistry"
 	"github.com/operator-framework/operator-registry/pkg/image/execregistry"
 	"github.com/operator-framework/operator-registry/pkg/lib/bundle"
+	"github.com/operator-framework/operator-registry/pkg/lib/declarative"
 	"github.com/operator-framework/operator-registry/pkg/lib/indexer"
 	lregistry "github.com/operator-framework/operator-registry/pkg/lib/registry"
 	"github.com/operator-framework/operator-registry/pkg/registry"
@@ -42,12 +43,14 @@ var (
 	indexTag1  = rand.String(6)
 	indexTag2  = rand.String(6)
 	indexTag3  = rand.String(6)
+	indexTag4  = rand.String(6)
 
 	bundleImage = dockerHost + "/olmtest/e2e-bundle"
 	indexImage  = dockerHost + "/olmtest/e2e-index"
 	indexImage1 = dockerHost + "/olmtest/e2e-index:" + indexTag1
 	indexImage2 = dockerHost + "/olmtest/e2e-index:" + indexTag2
 	indexImage3 = dockerHost + "/olmtest/e2e-index:" + indexTag3
+	indexImage4 = dockerHost + "/olmtest/e2e-index:" + indexTag4
 
 	// publishedIndex is an index used to check for regressions in opm's behavior.
 	publishedIndex = os.Getenv("PUBLISHED_INDEX")
@@ -187,6 +190,18 @@ func exportIndexImageWith(containerTool string) error {
 	}
 
 	return indexExporter.ExportFromIndex(request)
+}
+
+func inspectIndexWith(containerTool, image string) error {
+
+	logger := logrus.NewEntry(logrus.New())
+	indexInspector := declarative.NewIndexConfig(logger)
+
+	request := declarative.InspectIndexRequest{
+		Image:    image,
+		PullTool: containertools.NewContainerTool(containerTool, containertools.NoneTool),
+	}
+	return indexInspector.InspectIndex(request)
 }
 
 func initialize() error {
@@ -331,6 +346,43 @@ var _ = Describe("opm", func() {
 			err = initialize()
 			Expect(err).NotTo(HaveOccurred())
 
+		})
+
+		It("builds and inspect index images", func() {
+			By("building bundles")
+			bundles := bundleLocations{
+				{bundleImage + ":" + bundleTag1, bundlePath1},
+				{bundleImage + ":" + bundleTag2, bundlePath2},
+				{bundleImage + ":" + bundleTag3, bundlePath3},
+			}
+			var err error
+			for _, b := range bundles {
+				err = inTemporaryBuildContext(func() error {
+					return bundle.BuildFunc(b.path, "", b.image, containerTool, packageName, channels, defaultChannel, false)
+				})
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			By("pushing bundles")
+			for _, b := range bundles {
+				Expect(pushWith(containerTool, b.image)).NotTo(HaveOccurred())
+			}
+
+			By("building an index")
+			err = buildIndexWith(containerTool, "", indexImage4, bundles.images(), registry.ReplacesMode, false)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("pushing an index")
+			err = pushWith(containerTool, indexImage4)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("inspecting an index")
+			err = inspectIndexWith(containerTool, indexImage4)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("unfurling the configs in the default configs directory")
+			_, err = os.Stat(filepath.Join("./", declarative.DefaultInspectDir))
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("build bundles and index via inference", func() {

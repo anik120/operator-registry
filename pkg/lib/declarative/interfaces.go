@@ -1,9 +1,8 @@
 package declarative
 
 import (
-	"github.com/sirupsen/logrus"
-
 	"github.com/operator-framework/operator-registry/pkg/containertools"
+	"github.com/sirupsen/logrus"
 )
 
 // AddConfigRequest represents a request for a bundle to be added
@@ -16,10 +15,20 @@ type AddConfigRequest struct {
 	SkipTLS       bool
 }
 
+// InspectIndexRequest represents a request to inspect an index
+// for it's content (i.e package configs)
+type InspectIndexRequest struct {
+	Image    string
+	PullTool containertools.ContainerTool
+	CaFile   string
+	SkipTLS  bool
+}
+
 // IndexConfig represents the content packages of an index
 // in a declarative way using config files
 type IndexConfig interface {
 	AddToConfig(AddConfigRequest) error
+	InspectIndex(InspectIndexRequest) error
 }
 
 // NewIndexConfig returns an IndexConfig
