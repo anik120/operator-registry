@@ -20,8 +20,8 @@ func TestGenerateDockerfile(t *testing.T) {
 	expectedDockerfile := `FROM quay.io/operator-framework/builder
 LABEL operators.operatorframework.io.index.database.v1=/database/index.db
 LABEL operators.operatorframework.io.configs.v1=/configs/
-ADD database/index.db /database/index.db
 ADD configs/ /configs/
+ADD database/index.db /database/index.db
 EXPOSE 50051
 ENTRYPOINT ["/bin/opm"]
 CMD ["registry", "serve", "--database", "/database/index.db"]
@@ -33,7 +33,8 @@ CMD ["registry", "serve", "--database", "/database/index.db"]
 		Logger: logger,
 	}
 
-	dockerfile := dockerfileGenerator.GenerateIndexDockerfile(binarySourceImage, databasePath, configFolder)
+	itemsToAdd := map[string]string{databasePath: containertools.DefaultDbLocation, configFolder: containertools.DefaultConfigFolderLocation}
+	dockerfile := dockerfileGenerator.GenerateIndexDockerfile(binarySourceImage, itemsToAdd)
 	require.Equal(t, dockerfile, expectedDockerfile)
 }
 
@@ -46,8 +47,8 @@ func TestGenerateDockerfile_EmptyBaseImage(t *testing.T) {
 	expectedDockerfile := `FROM quay.io/operator-framework/upstream-opm-builder
 LABEL operators.operatorframework.io.index.database.v1=/database/index.db
 LABEL operators.operatorframework.io.configs.v1=/configs/
-ADD database/index.db /database/index.db
 ADD configs/ /configs/
+ADD database/index.db /database/index.db
 EXPOSE 50051
 ENTRYPOINT ["/bin/opm"]
 CMD ["registry", "serve", "--database", "/database/index.db"]
@@ -58,7 +59,7 @@ CMD ["registry", "serve", "--database", "/database/index.db"]
 	dockerfileGenerator := containertools.IndexDockerfileGenerator{
 		Logger: logger,
 	}
-
-	dockerfile := dockerfileGenerator.GenerateIndexDockerfile("", databasePath, configFolder)
+	itemsToAdd := map[string]string{databasePath: containertools.DefaultDbLocation, configFolder: containertools.DefaultConfigFolderLocation}
+	dockerfile := dockerfileGenerator.GenerateIndexDockerfile("", itemsToAdd)
 	require.Equal(t, dockerfile, expectedDockerfile)
 }

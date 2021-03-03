@@ -24,6 +24,7 @@ func NewIndexAdder(buildTool, pullTool containertools.ContainerTool, logger *log
 		CommandRunner:       containertools.NewCommandRunner(buildTool, logger),
 		LabelReader:         containertools.NewLabelReader(pullTool, logger),
 		IndexConfig:         declarative.NewIndexConfig(logger, imgRegistry),
+		ImgRegistry:         imgRegistry,
 		RegistryAdder:       registry.NewRegistryAdder(logger),
 		BuildTool:           buildTool,
 		PullTool:            pullTool,

@@ -3,6 +3,7 @@ package containertools
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,7 +18,7 @@ const (
 
 // DockerfileGenerator defines functions to generate index dockerfiles
 type DockerfileGenerator interface {
-	GenerateIndexDockerfile(string, string, string) string
+	GenerateIndexDockerfile(string, map[string]string) string
 }
 
 // IndexDockerfileGenerator struct implementation of DockerfileGenerator interface
@@ -34,7 +35,7 @@ func NewDockerfileGenerator(logger *logrus.Entry) DockerfileGenerator {
 
 // GenerateIndexDockerfile builds a string representation of a dockerfile to use when building
 // an operator-registry index image
-func (g *IndexDockerfileGenerator) GenerateIndexDockerfile(binarySourceImage, databasePath, configFolderPath string) string {
+func (g *IndexDockerfileGenerator) GenerateIndexDockerfile(binarySourceImage string, itemsToAdd map[string]string) string {
 	var dockerfile string
 
 	if binarySourceImage == "" {
@@ -51,9 +52,13 @@ func (g *IndexDockerfileGenerator) GenerateIndexDockerfile(binarySourceImage, da
 	dockerfile += fmt.Sprintf("LABEL %s=%s\n", ConfigsLocationLabel, DefaultConfigFolderLocation)
 
 	// Content
-	dockerfile += fmt.Sprintf("ADD %s %s\n", databasePath, DefaultDbLocation)
-	if configFolderPath != "" {
-		dockerfile += fmt.Sprintf("ADD %s %s\n", configFolderPath, DefaultConfigFolderLocation)
+	sortedsrc := make([]string, 0)
+	for src, _ := range itemsToAdd {
+		sortedsrc = append(sortedsrc, src)
+	}
+	sort.Strings(sortedsrc)
+	for _, src := range sortedsrc {
+		dockerfile += fmt.Sprintf("ADD %s %s\n", src, itemsToAdd[src])
 	}
 	dockerfile += fmt.Sprintf("EXPOSE 50051\n")
 	dockerfile += fmt.Sprintf("ENTRYPOINT [\"/bin/opm\"]\n")

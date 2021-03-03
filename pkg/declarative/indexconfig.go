@@ -21,11 +21,11 @@ type ConfigEditor struct {
 // AddToConfig persists the bundle in it's package config
 func (c ConfigEditor) AddToConfig(request AddConfigRequest) error {
 
-	defer func() {
-		if err := c.ImgRegistry.Destroy(); err != nil {
-			c.Logger.WithError(err).Warn("error destroying local cache")
-		}
-	}()
+	// defer func() {
+	// 	if err := c.ImgRegistry.Destroy(); err != nil {
+	// 		c.Logger.WithError(err).Warn("error destroying local cache")
+	// 	}
+	// }()
 
 	simpleRefs := make([]image.Reference, 0)
 	for _, ref := range request.Bundles {

@@ -170,7 +170,11 @@ func runIndexAddCmdFunc(cmd *cobra.Command, args []string) error {
 	if rerr != nil {
 		return rerr
 	}
-
+	defer func() {
+		if err := reg.Destroy(); err != nil {
+			logrus.Errorf("error destroying local cache: %s", err)
+		}
+	}()
 	indexAdder := indexer.NewIndexAdder(
 		containertools.NewContainerTool(buildTool, containertools.PodmanTool),
 		containertools.NewContainerTool(pullTool, containertools.NoneTool),

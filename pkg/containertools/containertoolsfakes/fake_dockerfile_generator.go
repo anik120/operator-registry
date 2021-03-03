@@ -8,12 +8,11 @@ import (
 )
 
 type FakeDockerfileGenerator struct {
-	GenerateIndexDockerfileStub        func(string, string, string) string
+	GenerateIndexDockerfileStub        func(string, map[string]string) string
 	generateIndexDockerfileMutex       sync.RWMutex
 	generateIndexDockerfileArgsForCall []struct {
 		arg1 string
-		arg2 string
-		arg3 string
+		arg2 map[string]string
 	}
 	generateIndexDockerfileReturns struct {
 		result1 string
@@ -25,18 +24,17 @@ type FakeDockerfileGenerator struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeDockerfileGenerator) GenerateIndexDockerfile(arg1 string, arg2 string, arg3 string) string {
+func (fake *FakeDockerfileGenerator) GenerateIndexDockerfile(arg1 string, arg2 map[string]string) string {
 	fake.generateIndexDockerfileMutex.Lock()
 	ret, specificReturn := fake.generateIndexDockerfileReturnsOnCall[len(fake.generateIndexDockerfileArgsForCall)]
 	fake.generateIndexDockerfileArgsForCall = append(fake.generateIndexDockerfileArgsForCall, struct {
 		arg1 string
-		arg2 string
-		arg3 string
-	}{arg1, arg2, arg3})
-	fake.recordInvocation("GenerateIndexDockerfile", []interface{}{arg1, arg2, arg3})
+		arg2 map[string]string
+	}{arg1, arg2})
+	fake.recordInvocation("GenerateIndexDockerfile", []interface{}{arg1, arg2})
 	fake.generateIndexDockerfileMutex.Unlock()
 	if fake.GenerateIndexDockerfileStub != nil {
-		return fake.GenerateIndexDockerfileStub(arg1, arg2, arg3)
+		return fake.GenerateIndexDockerfileStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
@@ -51,17 +49,17 @@ func (fake *FakeDockerfileGenerator) GenerateIndexDockerfileCallCount() int {
 	return len(fake.generateIndexDockerfileArgsForCall)
 }
 
-func (fake *FakeDockerfileGenerator) GenerateIndexDockerfileCalls(stub func(string, string, string) string) {
+func (fake *FakeDockerfileGenerator) GenerateIndexDockerfileCalls(stub func(string, map[string]string) string) {
 	fake.generateIndexDockerfileMutex.Lock()
 	defer fake.generateIndexDockerfileMutex.Unlock()
 	fake.GenerateIndexDockerfileStub = stub
 }
 
-func (fake *FakeDockerfileGenerator) GenerateIndexDockerfileArgsForCall(i int) (string, string, string) {
+func (fake *FakeDockerfileGenerator) GenerateIndexDockerfileArgsForCall(i int) (string, map[string]string) {
 	fake.generateIndexDockerfileMutex.RLock()
 	defer fake.generateIndexDockerfileMutex.RUnlock()
 	argsForCall := fake.generateIndexDockerfileArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.arg1, argsForCall.arg2
 }
 
 func (fake *FakeDockerfileGenerator) GenerateIndexDockerfileReturns(result1 string) {

@@ -97,7 +97,16 @@ func inTemporaryBuildContext(f func() error) (rerr error) {
 
 func buildIndexWith(containerTool, fromIndexImage, toIndexImage string, bundleImages []string, mode registry.Mode, overwriteLatest bool) error {
 	logger := logrus.WithFields(logrus.Fields{"bundles": bundleImages})
-	indexAdder := indexer.NewIndexAdder(containertools.NewContainerTool(containerTool, containertools.NoneTool), containertools.NewContainerTool(containerTool, containertools.NoneTool), logger)
+	reg, err := execregistry.NewRegistry(containertools.NewContainerTool(containerTool, containertools.NoneTool), logger)
+	defer func() {
+		if err := reg.Destroy(); err != nil {
+			logrus.Errorf("error destroying local cache: %s", err)
+		}
+	}()
+	if err != nil {
+		return err
+	}
+	indexAdder := indexer.NewIndexAdder(containertools.NewContainerTool(containerTool, containertools.NoneTool), containertools.NewContainerTool(containerTool, containertools.NoneTool), logger, reg)
 
 	request := indexer.AddToIndexRequest{
 		Generate:          false,
@@ -119,7 +128,16 @@ func buildFromIndexWith(containerTool string) error {
 		bundleImage + ":" + bundleTag3,
 	}
 	logger := logrus.WithFields(logrus.Fields{"bundles": bundles})
-	indexAdder := indexer.NewIndexAdder(containertools.NewContainerTool(containerTool, containertools.NoneTool), containertools.NewContainerTool(containerTool, containertools.NoneTool), logger)
+	reg, err := execregistry.NewRegistry(containertools.NewContainerTool(containerTool, containertools.NoneTool), logger)
+	defer func() {
+		if err := reg.Destroy(); err != nil {
+			logrus.Errorf("error destroying local cache: %s", err)
+		}
+	}()
+	if err != nil {
+		return err
+	}
+	indexAdder := indexer.NewIndexAdder(containertools.NewContainerTool(containerTool, containertools.NoneTool), containertools.NewContainerTool(containerTool, containertools.NoneTool), logger, reg)
 
 	request := indexer.AddToIndexRequest{
 		Generate:          false,
@@ -425,7 +443,7 @@ var _ = Describe("opm", func() {
 				PullTool: tool,
 				Logger:   logger,
 			}
-			dbFile, _, err := imageIndexer.ExtractDatabases(".", publishedIndex, "", true)
+			dbFile, _, err := imageIndexer.ExtractIndex(image.SimpleReference(publishedIndex), ".")
 			Expect(err).NotTo(HaveOccurred(), "error extracting registry db")
 
 			db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s", dbFile))
